@@ -9,6 +9,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('data_dir', "fake_data/", 'folder with data files to parse')
 flags.DEFINE_string('dump_dir', "fake_dump/", 'folder to dump dependency parses into')
 flags.DEFINE_string('name', 'data.pkl', 'output pickle file name')
+flags.DEFINE_string('corenlp', 'corenlp', 'path to the stanford corenlp folder')
 
 
 def extract_data(textlines):
@@ -44,10 +45,14 @@ def extract_data(textlines):
 
 
 def main(argv):
+	#Option 1
 	#Before running this file, run the following command from terminal after downloading the 'corenlp' folder: 
 	#java -mx4g -cp "corenlp/*" edu.stanford.nlp.pipeline.StanfordCoreNLPServer -port 8000 -timeout 15000 -annotators "tokenize,ssplit,dep"
 	nlp = StanfordCoreNLP('http://localhost', port=8000, logging_level=logging.WARNING)
 	
+	#Option 2
+	#nlp = StanfordCoreNLP(FLAGS.corenlp)
+
 	print "Test text\n"
 	text = 'Guangdong University of Foreign Studies is located in Guangzhou.'
 	print nlp.dependency_parse(text)
@@ -87,11 +92,11 @@ def main(argv):
 		max_words_target = max(len(tokenized_summary), max_words_target)
 		
 		count += 1
-		if count % 1 == 500:
+		if count % 500 == 0:
 			print(str(count) + " files parsed....")
 
 	print("Done, " + str(count) + " files parsed, saving....")
-	print("Maximum number of word per sentence in input files: " + str(max_words_input))
+	print("Maximum number of words per sentence in input files: " + str(max_words_input))
 	print("Maximum number of words in target: " + str(max_words_target))
 	print("Maximum number of sentences per input file: " + str(max_sentences_input))
 	pl.dump(data, open(FLAGS.dump_dir + FLAGS.name, 'wb'))

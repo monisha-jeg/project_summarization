@@ -1,1 +1,4 @@
 *.pyc
+dump/
+xsum-extracts-from-downloads/
+**/corenlp/
