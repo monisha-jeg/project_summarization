@@ -1,5 +1,8 @@
 import os 
-import cPickle as pl
+try:
+	import cPickle as pl
+except ImportError:
+	from six.moves import cPickle as pl
 import numpy as np
 from absl import flags
 from absl import app
@@ -136,7 +139,4 @@ def main(argv):
 
 if __name__ == '__main__':
    app.run(main)
-
-
-
 

@@ -1,8 +1,12 @@
 from stanfordcorenlp import StanfordCoreNLP
 import os, logging
-import cPickle as pl
+try:
+	import cPickle as pl
+except ImportError:
+	from six.moves import cPickle as pl
 from absl import flags
 from absl import app
+from tqdm import tqdm
 
 #Define flags
 FLAGS = flags.FLAGS
@@ -42,20 +46,43 @@ def extract_data(textlines):
 
 	return text, summary
 
+def process_file(file_path, nlp):
+	with open(file_path, 'r') as fl:
+		text, summary = extract_data(fl.readlines())
+	
+	dep_parse = []
+	tokenized_text = []
+	max_words_input = -1
+	for sentence in text:
+		sentence_parse = []
+		tokens = nlp.word_tokenize(sentence)
+		for triplet in nlp.dependency_parse(sentence):
+			#triplet is (relation, goernor_index, dependent_index)
+			#ignore direction and relation identifier of dependency
+			sentence_parse.append((triplet[1], triplet[2])) 
+		dep_parse.append(sentence_parse)
+		tokenized_text.append(tokens)
+
+		max_words_input = max(len(tokens), max_words_input)
+	tokenized_summary = nlp.word_tokenize(summary)
+	data = {"text": tokenized_text, "summary": tokenized_summary, "dep": dep_parse}
+
+	return data
+	
 
 
 def main(argv):
 	#Option 1
 	#Before running this file, run the following command from terminal after downloading the 'corenlp' folder: 
-	#java -mx4g -cp "corenlp/*" edu.stanford.nlp.pipeline.StanfordCoreNLPServer -port 8000 -timeout 15000 -annotators "tokenize,ssplit,dep"
-	nlp = StanfordCoreNLP('http://localhost', port=8000, logging_level=logging.WARNING)
+	#java -mx4g -cp "*" edu.stanford.nlp.pipeline.StanfordCoreNLPServer -port 8000 -timeout 15000 -annotators "tokenize,ssplit,dep"
+	nlp = StanfordCoreNLP('http://localhost', port=8000, logging_level=logging.FATAL)
 	
 	#Option 2
 	#nlp = StanfordCoreNLP(FLAGS.corenlp)
 
-	print "Test text\n"
+	print("Test text\n")
 	text = 'Guangdong University of Foreign Studies is located in Guangzhou.'
-	print nlp.dependency_parse(text)
+	print(nlp.dependency_parse(text))
 
 	#Produce parses for all files in given folder
 	text_files =  os.listdir(FLAGS.data_dir)
@@ -66,9 +93,9 @@ def main(argv):
 	max_words_target = -1
 	max_sentences_input = -1
 	data = {}
-
-	for text_file in text_files:
-		text, summary = extract_data(open(FLAGS.data_dir + text_file).readlines())
+	os.makedirs(FLAGS.dump_dir, exist_ok=True)
+	for text_file in tqdm(text_files):
+		text, summary = extract_data(open(os.path.join(FLAGS.data_dir, text_file)).readlines())
 		
 		dep_parse = []
 		tokenized_text = []
@@ -86,21 +113,23 @@ def main(argv):
 		
 		fileid = text_file[:text_file.find(".")]
 		tokenized_summary = nlp.word_tokenize(summary)
-		data[fileid] = {"text": tokenized_text, "summary": tokenized_summary, "dep": dep_parse}
+		data = {"text": tokenized_text, "summary": tokenized_summary, "dep": dep_parse}
+		with open(os.path.join(FLAGS.dump_dir, fileid), 'wb') as fl:
+			pl.dump(data, fl)
 
 		max_sentences_input = max(len(text), max_sentences_input)
 		max_words_target = max(len(tokenized_summary), max_words_target)
 		
 		count += 1
-		if count % 500 == 0:
-			print(str(count) + " files parsed....")
+		
 
 	print("Done, " + str(count) + " files parsed, saving....")
 	print("Maximum number of words per sentence in input files: " + str(max_words_input))
 	print("Maximum number of words in target: " + str(max_words_target))
 	print("Maximum number of sentences per input file: " + str(max_sentences_input))
-	pl.dump(data, open(FLAGS.dump_dir + FLAGS.name, 'wb'))
-	print("Saved")
+	#os.makedirs(FLAGS.dump_dir, exist_ok=True)
+	#pl.dump(data, open(FLAGS.dump_dir + FLAGS.name, 'wb'))
+	#print("Saved")
 
 	nlp.close() # Do not forget to close! The backend server will consume a lot memory.
    
