@@ -1,4 +1,8 @@
 *.pyc
 dump/
-xsum-extracts-from-downloads/
+xsum-extracts-from-downloads/*
 **/corenlp/
+xsum-dumps/*
+.idea/*
+.vscode/*
+XSum-Dataset/venv/*
