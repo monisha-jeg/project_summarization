@@ -7,12 +7,13 @@ from dgl import DGLGraph
 
 MAX_LENGTH = 20
 
+
 class FinalDecoderRNN(nn.Module):
-    def __init__(self, hidden_size, output_size, dropout_p=0.1, max_length=MAX_LENGTH):
+    def __init__(self, word_dim, vocab_size, dropout_rate=0.1, max_length=MAX_LENGTH):
         super(FinalDecoderRNN, self).__init__()
-        self.hidden_size = hidden_size
-        self.output_size = output_size
-        self.dropout_p = dropout_p
+        self.hidden_size = word_dim
+        self.output_size = vocab_size
+        self.dropout_p = dropout_rate
         self.max_length = max_length
 
         self.embedding = nn.Embedding(self.output_size, self.hidden_size)
@@ -26,10 +27,8 @@ class FinalDecoderRNN(nn.Module):
         embedded = self.embedding(input).view(1, 1, -1)
         embedded = self.dropout(embedded)
 
-        attn_weights = F.softmax(
-            self.attn(th.cat((embedded[0], hidden[0]), 1)), dim=1)
-        attn_applied = th.bmm(attn_weights.unsqueeze(0),
-                                 encoder_outputs.unsqueeze(0))
+        attn_weights = F.softmax(self.attn(th.cat((embedded[0], hidden[0]), 1)), dim=1)
+        attn_applied = th.bmm(attn_weights.unsqueeze(0), encoder_outputs.unsqueeze(0))
 
         output = th.cat((embedded[0], attn_applied[0]), 1)
         output = self.attn_combine(output).unsqueeze(0)
@@ -40,5 +39,3 @@ class FinalDecoderRNN(nn.Module):
         output = F.log_softmax(self.out(output[0]), dim=1)
         return output, hidden, attn_weights
 
-    def initHidden(self):
-        return th.zeros(1, 1, self.hidden_size, device=device)
