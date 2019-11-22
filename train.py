@@ -1,4 +1,4 @@
-from models.encoders import SentenceEncoder, ParagraphRNNEncoder, FullEncoder
+from models.encoders import FullEncoder
 from models.decoders import FinalDecoderRNN, RNNDecoder
 from data_utils import data_to_graph
 from preprocessing.process_dumps import Vocab
@@ -52,9 +52,9 @@ parser.add_argument("-PARA_RNN_OUTDIM", default=200)
 # PARA_RNN_OUTDIM = 100
 parser.add_argument("-LR", default=0.001)
 parser.add_argument("-MAX_LEN", default=100)
-parser.add_argument("-MODEL_DIR", default="WORDGCN-RNN")
-parser.add_argument("-SAVE_EVERY", default=100)
-parser.add_argument("-EVAL_EVERY", default=100)
+parser.add_argument("-MODEL_DIR", default="WORDGCNRNN")
+parser.add_argument("-SAVE_EVERY", default=500)
+parser.add_argument("-EVAL_EVERY", default=1000)
 
 args = parser.parse_args()
 os.makedirs(args.MODEL_DIR, exist_ok=True)
@@ -241,10 +241,15 @@ def get_performance(val_files, encoder, decoder, vocab=vocab, dest_file=None):
 iters = 0
 
 
-def trainIters():
-    global iters
+def trainIters(iters=iters, load_path=None):
     encoder_optimizer = th.optim.Adam(fullencoder.parameters(), lr=args.LR)
     decoder_optimizer = th.optim.Adam(decoder.parameters(), lr=args.LR)
+    if load_path is not None:
+        data = th.load(load_path)
+        fullencoder.load_state_dict(data["encoder_state_dict"])
+        decoder.load_state_dict(data["decoder_state_dict"])
+        encoder_optimizer.load_state_dict(data["encoder_optimizer_state_dict"])
+        decoder_optimizer.load_state_dict(data["decoder_optimizer_state_dict"])
     fullencoder.train()
     decoder.train()
     criterion = nn.CrossEntropyLoss()

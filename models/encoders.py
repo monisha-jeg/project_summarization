@@ -94,7 +94,18 @@ class AttentionPooler(nn.Module):
         return ans
 
 
-class SentenceEncoder(nn.Module):
+class RNNLayer(nn.Module):
+    def __init__(self, in_dim, out_dim, num_layers=1):
+        super(RNNLayer, self).__init__()
+        self.rnnlayer = nn.GRU(in_dim, out_dim // 2, num_layers, bidirectional=True)
+
+    def forward(self, feats):
+        feats = feats.unsqueeze(1)
+        out, hidden = self.rnnlayer(feats)
+        return out.squeeze(1), hidden.squeeze(1)
+
+
+class SentenceGCNEncoder(nn.Module):
     def __init__(
         self,
         vocab_size,
@@ -104,7 +115,7 @@ class SentenceEncoder(nn.Module):
         weight_matrix=None,
         word_gcn_dropout=0.0,
     ):
-        super(SentenceEncoder, self).__init__()
+        super(SentenceGCNEncoder, self).__init__()
         self.word_embedder = WordEmbedder(
             vocab_size, word_dim, weight_matrix, trainable=True
         )
@@ -124,6 +135,95 @@ class SentenceEncoder(nn.Module):
         return x
 
 
+class SentenceGCNRNNEncoder(nn.Module):
+    def __init__(
+        self,
+        vocab_size,
+        word_dim=300,
+        out_word_dim=200,
+        word_gcn_hidden=[300, 200],
+        weight_matrix=None,
+        word_gcn_dropout=0.0,
+    ):
+        super(SentenceGCNRNNEncoder, self).__init__()
+        self.word_embedder = WordEmbedder(
+            vocab_size, word_dim, weight_matrix, trainable=True
+        )
+        self.gcn_layers = GCNNet(
+            word_dim,
+            out_word_dim,
+            hidden_dims=word_gcn_hidden,
+            dropout_rate=word_gcn_dropout,
+        )
+        # self.emb_pooler = SumPooler()
+        self.rnn_layer = RNNLayer(out_word_dim, out_word_dim)
+        self.emb_pooler = AttentionPooler(out_word_dim)
+
+    def forward(self, node_idx, g):
+        features = self.word_embedder(node_idx)
+        x = self.gcn_layers(g, features)
+        x, _ = self.rnn_layer(x)
+        x = self.emb_pooler(x)
+        return x
+
+
+class SentenceRNNGCNEncoder(nn.Module):
+    def __init__(
+        self,
+        vocab_size,
+        word_dim=300,
+        out_word_dim=200,
+        word_gcn_hidden=[300, 200],
+        weight_matrix=None,
+        word_gcn_dropout=0.0,
+    ):
+        super(SentenceRNNGCNEncoder, self).__init__()
+        self.word_embedder = WordEmbedder(
+            vocab_size, word_dim, weight_matrix, trainable=True
+        )
+        self.rnn_layer = RNNLayer(word_dim, out_word_dim)
+        self.gcn_layers = GCNNet(
+            out_word_dim,
+            out_word_dim,
+            hidden_dims=word_gcn_hidden,
+            dropout_rate=word_gcn_dropout,
+        )
+        # self.emb_pooler = SumPooler()
+        self.emb_pooler = AttentionPooler(out_word_dim)
+
+    def forward(self, node_idx, g):
+        features = self.word_embedder(node_idx)
+        features, _ = self.rnn_layer(features)
+        x = self.gcn_layers(g, features)
+        x = self.emb_pooler(x)
+        return x
+
+
+class SentenceRNNEncoder(nn.Module):
+    def __init__(
+        self,
+        vocab_size,
+        word_dim=300,
+        out_word_dim=200,
+        word_gcn_hidden=[300, 200],
+        weight_matrix=None,
+        word_gcn_dropout=0.0,
+    ):
+        super(SentenceRNNEncoder, self).__init__()
+        self.word_embedder = WordEmbedder(
+            vocab_size, word_dim, weight_matrix, trainable=True
+        )
+        # self.emb_pooler = SumPooler()
+        self.rnn_layer = RNNLayer(word_dim, out_word_dim)
+        self.emb_pooler = AttentionPooler(out_word_dim)
+
+    def forward(self, node_idx, g):
+        features = self.word_embedder(node_idx)
+        x, _ = self.rnn_layer(features)
+        x = self.emb_pooler(x)
+        return x
+
+
 class ParagraphRNNEncoder(nn.Module):
     def __init__(
         self,
@@ -136,7 +236,7 @@ class ParagraphRNNEncoder(nn.Module):
         super(ParagraphRNNEncoder, self).__init__()
         self.rnn_encoder = nn.GRU(
             sent_dim,
-            out_dim//2,
+            out_dim // 2,
             num_layers,
             bidirectional=bidirectional,
             dropout=rnn_dropout,
@@ -151,7 +251,7 @@ class ParagraphRNNEncoder(nn.Module):
 class FullEncoder(nn.Module):
     def __init__(self, args, word_count, emb_weights=None):
         super(FullEncoder, self).__init__()
-        self.encoder = SentenceEncoder(
+        self.encoder = SentenceGCNRNNEncoder(
             vocab_size=word_count,
             word_dim=args.WORD_DIM,
             out_word_dim=args.WORD_GCN_OUT,
