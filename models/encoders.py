@@ -82,6 +82,18 @@ class SumPooler(nn.Module):
         return th.sum(feats, -2)
 
 
+class AttentionPooler(nn.Module):
+    def __init__(self, dim):
+        super(AttentionPooler, self).__init__()
+        self.weight = nn.Parameter(th.FloatTensor(dim))
+        self.weight.data = nn.init.uniform_(self.weight.data)
+
+    def forward(self, feats):
+        attentions = F.softmax(feats @ self.weight, -1)
+        ans = attentions @ feats
+        return ans
+
+
 class SentenceEncoder(nn.Module):
     def __init__(
         self,
@@ -102,7 +114,61 @@ class SentenceEncoder(nn.Module):
             hidden_dims=word_gcn_hidden,
             dropout_rate=word_gcn_dropout,
         )
-        self.emb_pooler = SumPooler()
+        # self.emb_pooler = SumPooler()
+        self.emb_pooler = AttentionPooler(out_word_dim)
 
     def forward(self, node_idx, g):
-        pass
+        features = self.word_embedder(node_idx)
+        x = self.gcn_layers(g, features)
+        x = self.emb_pooler(x)
+        return x
+
+
+class ParagraphRNNEncoder(nn.Module):
+    def __init__(
+        self,
+        sent_dim=200,
+        num_layers=2,
+        out_dim=200,
+        bidirectional=True,
+        rnn_dropout=0.0,
+    ):
+        super(ParagraphRNNEncoder, self).__init__()
+        self.rnn_encoder = nn.GRU(
+            sent_dim,
+            out_dim//2,
+            num_layers,
+            bidirectional=bidirectional,
+            dropout=rnn_dropout,
+        )
+
+    def forward(self, sents):
+        sents = sents.unsqueeze(1)
+        results = self.rnn_encoder(sents)[0]
+        return results.squeeze(1)
+
+
+class FullEncoder(nn.Module):
+    def __init__(self, args, word_count, emb_weights=None):
+        super(FullEncoder, self).__init__()
+        self.encoder = SentenceEncoder(
+            vocab_size=word_count,
+            word_dim=args.WORD_DIM,
+            out_word_dim=args.WORD_GCN_OUT,
+            word_gcn_hidden=args.WORD_GCN_HIDDEN,
+            weight_matrix=emb_weights,
+            word_gcn_dropout=args.WORD_GCN_DROPOUT,
+        )
+        self.rnn_encode = ParagraphRNNEncoder(
+            sent_dim=args.WORD_GCN_OUT,
+            num_layers=args.PARA_RNN_LAYERS,
+            rnn_dropout=args.PARA_RNN_DROPOUT,
+            out_dim=args.PARA_RNN_OUTDIM,
+            bidirectional=True,
+        )
+
+    def forward(self, sents, graphs):
+        out = th.stack([self.encoder(s, g) for s, g in zip(sents, graphs)])
+        out = self.rnn_encode(out)
+        return out
+

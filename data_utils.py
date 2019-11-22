@@ -22,8 +22,14 @@ def data_to_graph(data, vocab_obj):
         )
         for sent in data["text"]
     ]
+    idx_summ = np.array(
+        [vocab_obj["<START>"]]
+        + [vocab_obj[w] for w in data["summary"]]
+        + [vocab_obj["<END>"]],
+        dtype="int",
+    )
     dep_graphs = [nx.DiGraph() for _ in range(len(idx_sent))]
     for g, deps, idx in zip(dep_graphs, data["dep"], idx_sent):
         g.add_nodes_from(list(range(len(idx))))
         g.add_edges_from(deps)
-    return [(i, d) for i, d in zip(idx_sent, dep_graphs)]
+    return [(i, d) for i, d in zip(idx_sent, dep_graphs)], idx_summ

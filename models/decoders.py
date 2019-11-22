@@ -4,6 +4,7 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 from dgl import DGLGraph
+from models.encoders import WordEmbedder
 
 MAX_LENGTH = 20
 
@@ -38,4 +39,42 @@ class FinalDecoderRNN(nn.Module):
 
         output = F.log_softmax(self.out(output[0]), dim=1)
         return output, hidden, attn_weights
+
+
+class RNNDecoder(nn.Module):
+    def __init__(
+        self,
+        vocab_size,
+        word_embedding=300,
+        weight_matrix=None,
+        dropout=0.0,
+        num_layers=1,
+        hidden_size=200,
+        bidirectional=True,
+        atten_dim=100,
+        enc_dim=200,
+    ):
+        super(RNNDecoder, self).__init__()
+        self.word_emb = WordEmbedder(vocab_size, word_embedding, weight_matrix)
+        self.hidden_size = hidden_size
+        self.atten_W1 = nn.Linear(hidden_size, atten_dim)
+        self.atten_W2 = nn.Linear(enc_dim, atten_dim)
+        self.atten_v = nn.Parameter(th.FloatTensor(atten_dim))
+        self.num_layers = num_layers
+        self.lin = nn.Linear(word_embedding + enc_dim, hidden_size)
+        self.rnn_decoder = nn.GRU(hidden_size, hidden_size, num_layers, dropout=dropout)
+        self.pred_word = nn.Linear(hidden_size, vocab_size)
+
+    def forward(self, input_idx, sents, hidden=None):
+        embs = self.word_emb(input_idx).squeeze()
+        attentions = F.softmax(
+            F.tanh(self.atten_W1(hidden) + self.atten_W2(sents)) @ self.atten_v, -1
+        )
+        weight_enc = attentions @ sents
+        output = F.relu(self.lin(th.cat((embs, weight_enc))))
+        output, hidden = self.rnn_decoder(
+            output.view(1, 1, -1), hidden.view(self.num_layers, 1, -1)
+        )
+        output = self.pred_word(output)
+        return output.squeeze(), hidden.squeeze(), attentions
 
