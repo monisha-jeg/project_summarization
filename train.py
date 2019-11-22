@@ -119,8 +119,8 @@ for p in fullencoder.parameters():
     if p.dim() > 1:
         nn.init.xavier_uniform_(p)
 
-sents, graphs, summ = get_data(train_files[0])
-out_rnn = fullencoder(sents, graphs)
+# sents, graphs, summ = get_data(train_files[0])
+# out_rnn = fullencoder(sents, graphs)
 
 
 teacher_forcing_ratio = 0.5
@@ -201,9 +201,6 @@ def evaluate(sents, graphs, encoder, decoder, max_length=args.MAX_LEN, vocab=voc
     return decoder_words, decoder_attention[: di + 1]
 
 
-ans = evaluate(sents, graphs, fullencoder, decoder)
-
-
 def get_performance(val_files, encoder, decoder, vocab=vocab, dest_file=None):
     references = []
     predicted = []
@@ -212,9 +209,10 @@ def get_performance(val_files, encoder, decoder, vocab=vocab, dest_file=None):
     for f in tqdm(val_files):
         with th.no_grad():
             sents, graphs, summ = get_data(f)
-            references.append([vocab.idx_word[i] for i in summ[1:]])
-            pred, _ = evaluate(sents, graphs, encoder, decoder, vocab=vocab)
-            predicted.append(pred)
+            if len(sents) > 0:
+                references.append([vocab.idx_word[i] for i in summ[1:]])
+                pred, _ = evaluate(sents, graphs, encoder, decoder, vocab=vocab)
+                predicted.append(pred)
     bleu = np.mean([sentence_bleu([r], p) for r, p in zip(references, predicted)])
     evaluator = rouge.Rouge(
         metrics=["rouge-n", "rouge-l", "rouge-w"],
@@ -240,31 +238,34 @@ def get_performance(val_files, encoder, decoder, vocab=vocab, dest_file=None):
     return bleu, rouge_scores
 
 
-scores = get_performance(val_files[:400], fullencoder, decoder)
+iters = 0
 
 
 def trainIters():
+    global iters
     encoder_optimizer = th.optim.Adam(fullencoder.parameters(), lr=args.LR)
     decoder_optimizer = th.optim.Adam(decoder.parameters(), lr=args.LR)
     fullencoder.train()
     decoder.train()
     criterion = nn.CrossEntropyLoss()
 
-    iters = 0
-    for epoch in args.EPOCHS:
-        for f in train_files:
+    for epoch in range(args.EPOCHS):
+        print("Epoch %d" % epoch)
+        l = 1.1
+        for f in tqdm(train_files):
             iters += 1
             sents, graphs, summ = get_data(f)
-            l = train(
-                sents,
-                graphs,
-                summ,
-                fullencoder,
-                decoder,
-                encoder_optimizer,
-                decoder_optimizer,
-                criterion,
-            )
+            if len(sents) > 0:
+                l = train(
+                    sents,
+                    graphs,
+                    summ,
+                    fullencoder,
+                    decoder,
+                    encoder_optimizer,
+                    decoder_optimizer,
+                    criterion,
+                )
             th.cuda.empty_cache()
 
             writer.add_scalar("Loss", l, iters)
@@ -280,8 +281,13 @@ def trainIters():
                     },
                     os.path.join(args.MODEL_DIR, "model%d.pth" % (iters)),
                 )
-            if iters% args.EVAL_EVERY == 0:
-                scores = get_performance(random.sample(val_files,1000), fullencoder, decoder)
+            if iters % args.EVAL_EVERY == 0:
+                scores = get_performance(
+                    random.sample(val_files, 1000), fullencoder, decoder
+                )
+                fullencoder.train()
+                decoder.train()
                 writer.add_scalar("BLUE", scores[0], iters)
                 for k in scores[1].keys():
-                    writer.add_scalar(k, scores[1][k]['f'], iters)
+                    writer.add_scalar(k, scores[1][k]["f"], iters)
+
