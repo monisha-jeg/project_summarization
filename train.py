@@ -1,6 +1,7 @@
 from models.encoders import FullEncoder
 from models.decoders import FinalDecoderRNN, RNNDecoder
 from data_utils import data_to_graph
+from beam_search import beam_decode
 from preprocessing.process_dumps import Vocab
 import random
 from nltk.translate.bleu_score import sentence_bleu
@@ -51,7 +52,7 @@ parser.add_argument("-PARA_RNN_DROPOUT", default=0.0)
 parser.add_argument("-PARA_RNN_OUTDIM", default=200)
 # PARA_RNN_OUTDIM = 100
 parser.add_argument("-LR", default=0.001)
-parser.add_argument("-MAX_LEN", default=100)
+parser.add_argument("-MAX_LEN", default=400)
 parser.add_argument("-MODEL_DIR", default="WORDGCNRNN")
 parser.add_argument("-SAVE_EVERY", default=500)
 parser.add_argument("-EVAL_EVERY", default=1000)
@@ -186,6 +187,7 @@ def evaluate(sents, graphs, encoder, decoder, max_length=args.MAX_LEN, vocab=voc
     decoder_input = th.tensor([vocab["<START>"]]).to(device)
     decoder_hidden = encoder_outputs[-1]
     decoder_outputs = []
+    decoder_attentions = []
     for di in range(1, max_length):
         decoder_output, decoder_hidden, decoder_attention = decoder(
             decoder_input, encoder_outputs, decoder_hidden
@@ -195,10 +197,11 @@ def evaluate(sents, graphs, encoder, decoder, max_length=args.MAX_LEN, vocab=voc
 
         # loss += criterion(decoder_output, summary_tensor[di])
         decoder_outputs.append(decoder_input.item())
+        decoder_attentions.append(decoder_attention.cpu().numpy())
         if decoder_input.item() == vocab["<END>"]:
             break
     decoder_words = [vocab.idx_word[i] for i in decoder_outputs]
-    return decoder_words, decoder_attention[: di + 1]
+    return decoder_words, decoder_attentions
 
 
 def get_performance(val_files, encoder, decoder, vocab=vocab, dest_file=None):
