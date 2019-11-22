@@ -1,5 +1,6 @@
 import operator
 from queue import PriorityQueue
+import torch as th
 
 
 class BeamSearchNode(object):
